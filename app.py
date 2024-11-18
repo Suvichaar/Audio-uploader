@@ -11,12 +11,13 @@ def init_google_sheets_client():
     credentials = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scopes)
     return gspread.authorize(credentials)
 
-# Initialize S3 client
+# Initialize S3 client with region
 def init_s3_client():
     return boto3.client(
         's3',
-        aws_access_key_id=st.secrets["aws_access_key_id"],
-        aws_secret_access_key=st.secrets["aws_secret_access_key"]
+        aws_access_key_id=st.secrets["AWS"]["aws_access_key_id"],
+        aws_secret_access_key=st.secrets["AWS"]["aws_secret_access_key"],
+        region_name=st.secrets["AWS"]["aws_region"]
     )
 
 # Extract Spreadsheet ID
@@ -42,7 +43,7 @@ def generate_and_upload_tts(text, s3_client, bucket_name, file_name):
     
     if response.status_code == 200:
         s3_client.put_object(Bucket=bucket_name, Key=file_name, Body=response.content)
-        return f"https://{bucket_name}.s3.amazonaws.com/{file_name}"
+        return f"https://{bucket_name}.s3.{st.secrets['aws_region']}.amazonaws.com/{file_name}"
     else:
         st.error(f"TTS generation failed: {response.status_code}, {response.text}")
         return None
@@ -51,7 +52,7 @@ def generate_and_upload_tts(text, s3_client, bucket_name, file_name):
 def process_google_sheet(sheet_url, source_column, target_column):
     google_sheets_client = init_google_sheets_client()
     s3_client = init_s3_client()
-    bucket_name = st.secrets["s3_bucket_name"]
+    bucket_name = st.secrets["AWS"]["s3_bucket_name"]
     
     spreadsheet_id = extract_spreadsheet_id(sheet_url)
     sheet = google_sheets_client.open_by_key(spreadsheet_id).sheet1  # Assumes the first sheet

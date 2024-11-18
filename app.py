@@ -69,10 +69,22 @@ def process_google_sheet(sheet_url, source_column, target_column):
     with st.spinner("Processing rows..."):
         for row_num, text in enumerate(texts[1:], start=2):  # Skip header
             if text:
+                # Ensure text is a string (optional if texts are strings by default)
+                text = str(text)
                 file_name = f"tts_audio_row{row_num}.mp3"
+                
+                # Generate TTS audio and upload to S3
                 s3_url = generate_and_upload_tts(text, s3_client, bucket_name, file_name)
+                
+                # Check if S3 URL is returned successfully
                 if s3_url:
-                    sheet.update_cell(row_num, target_column, s3_url)
+                    try:
+                        # Update Google Sheet with the S3 URL
+                        sheet.update_cell(row_num, target_column, s3_url)
+                    except Exception as e:
+                        st.error(f"Failed to update row {row_num} in Google Sheet: {e}")
+            else:
+                st.warning(f"Skipping empty cell at row {row_num}.")
 
 # Streamlit App Interface
 st.title("Google Sheets Text-to-Speech and S3 Upload")

@@ -45,9 +45,18 @@ def generate_and_upload_tts(text, s3_client, bucket_name, file_name, max_retries
             return f"https://{bucket_name}.s3.{st.secrets['AWS']['aws_region']}.amazonaws.com/{file_name}"
         
         elif response.status_code == 429:
-            wait_time = int(response.json().get("error", {}).get("message", "").split(" ")[-2])
-            st.warning(f"Rate limit exceeded. Retrying in {wait_time} seconds...")
-            time.sleep(wait_time)  # Wait before retrying
+            error_message = response.json().get("error", {}).get("message", "")
+            # Debug the error message to ensure correct format
+            st.warning(f"Rate limit exceeded. Message: {error_message}")
+
+            # Check if the message contains the expected pattern and safely extract the wait time
+            try:
+                wait_time = int(error_message.split(" ")[-2])  # Assuming the format "Retrying in X seconds"
+                st.warning(f"Retrying in {wait_time} seconds...")
+                time.sleep(wait_time)  # Wait before retrying
+            except ValueError:
+                st.error(f"Could not parse the wait time from the message: {error_message}")
+                break
         
         else:
             st.error(f"Failed with status code {response.status_code}: {response.text}")

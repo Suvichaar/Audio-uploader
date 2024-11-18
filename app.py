@@ -4,6 +4,7 @@ import boto3
 import gspread
 from google.oauth2.service_account import Credentials
 from urllib.parse import urlparse, parse_qs
+import re
 
 # Function to initialize Google Sheets client
 def init_google_sheets_client():
@@ -20,10 +21,17 @@ def init_s3_client():
         region_name=st.secrets["AWS"]["aws_region"]
     )
 
-# Extract Spreadsheet ID
+# Extract Spreadsheet ID from URL
 def extract_spreadsheet_id(url):
+    # Attempt to extract the ID from typical Google Sheets URL patterns
+    match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
+    if match:
+        return match.group(1)
+    
+    # Fallback if the URL contains the ID as a query parameter (e.g., '?id=')
     query = urlparse(url).query
     spreadsheet_id = parse_qs(query).get("id", [None])[0]
+    
     if not spreadsheet_id:
         raise ValueError("Invalid Google Sheets URL. Could not extract Spreadsheet ID.")
     return spreadsheet_id
@@ -43,7 +51,7 @@ def generate_and_upload_tts(text, s3_client, bucket_name, file_name):
     
     if response.status_code == 200:
         s3_client.put_object(Bucket=bucket_name, Key=file_name, Body=response.content)
-        return f"https://{bucket_name}.s3.{st.secrets["AWS"]["aws_region"]}.amazonaws.com/{file_name}"
+        return f"https://{bucket_name}.s3.{st.secrets['AWS']['aws_region']}.amazonaws.com/{file_name}"
     else:
         st.error(f"TTS generation failed: {response.status_code}, {response.text}")
         return None

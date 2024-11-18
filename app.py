@@ -30,8 +30,8 @@ def extract_spreadsheet_id(url):
 
 # Generate TTS and upload to S3
 def generate_and_upload_tts(text, s3_client, bucket_name, file_name):
-    API_URL = st.secrets["azure_tts_api_url"]
-    API_KEY = st.secrets["azure_api_key"]
+    API_URL = st.secrets["AWS"]["azure_tts_api_url"]
+    API_KEY = st.secrets["AWS"]["azure_api_key"]
     headers = {"Content-Type": "application/json", "api-key": API_KEY}
     payload = {
         "model": "gpt-4",
@@ -43,7 +43,7 @@ def generate_and_upload_tts(text, s3_client, bucket_name, file_name):
     
     if response.status_code == 200:
         s3_client.put_object(Bucket=bucket_name, Key=file_name, Body=response.content)
-        return f"https://{bucket_name}.s3.{st.secrets['aws_region']}.amazonaws.com/{file_name}"
+        return f"https://{bucket_name}.s3.{st.secrets["AWS"]["aws_region"]}.amazonaws.com/{file_name}"
     else:
         st.error(f"TTS generation failed: {response.status_code}, {response.text}")
         return None

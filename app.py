@@ -3,6 +3,7 @@ import requests
 import boto3
 import gspread
 from google.oauth2.service_account import Credentials
+import time
 
 # Function to initialize Google Sheets client
 def init_google_sheets_client():
@@ -23,8 +24,8 @@ def init_s3_client():
 def column_letter_to_index(letter):
     return ord(letter.upper()) - ord('A') + 1
 
-# Generate TTS and upload to S3
-def generate_and_upload_tts(text, s3_client, bucket_name, file_name):
+# Generate TTS and upload to S3 with retry mechanism
+def generate_and_upload_tts(text, s3_client, bucket_name, file_name, max_retries=5):
     API_URL = st.secrets["AWS"]["azure_tts_api_url"]
     API_KEY = st.secrets["AWS"]["azure_api_key"]
     headers = {"Content-Type": "application/json", "api-key": API_KEY}
@@ -34,14 +35,26 @@ def generate_and_upload_tts(text, s3_client, bucket_name, file_name):
         "voice": "nova",
         "output_format": "audio-24khz-48kbitrate-mono-mp3"
     }
-    response = requests.post(API_URL, headers=headers, json=payload)
     
-    if response.status_code == 200:
-        s3_client.put_object(Bucket=bucket_name, Key=file_name, Body=response.content)
-        return f"https://{bucket_name}.s3.{st.secrets['AWS']['aws_region']}.amazonaws.com/{file_name}"
-    else:
-        st.error(f"TTS generation failed: {response.status_code}, {response.text}")
-        return None
+    for attempt in range(max_retries):
+        response = requests.post(API_URL, headers=headers, json=payload)
+        
+        if response.status_code == 200:
+            # Upload to S3
+            s3_client.put_object(Bucket=bucket_name, Key=file_name, Body=response.content)
+            return f"https://{bucket_name}.s3.{st.secrets['AWS']['aws_region']}.amazonaws.com/{file_name}"
+        
+        elif response.status_code == 429:
+            wait_time = int(response.json().get("error", {}).get("message", "").split(" ")[-2])
+            st.warning(f"Rate limit exceeded. Retrying in {wait_time} seconds...")
+            time.sleep(wait_time)  # Wait before retrying
+        
+        else:
+            st.error(f"Failed with status code {response.status_code}: {response.text}")
+            break
+    
+    st.error("Maximum retries reached. Could not generate TTS.")
+    return None
 
 # Process Google Sheet and update with S3 URLs
 def process_google_sheet(spreadsheet_id, source_column_letter, target_column_letter):

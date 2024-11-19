@@ -24,8 +24,8 @@ def init_s3_client():
 def column_letter_to_index(letter):
     return ord(letter.upper()) - ord('A') + 1
 
-# Generate TTS and upload to S3 with retry mechanism
-def generate_and_upload_tts(text, s3_client, bucket_name, file_name, max_retries=5):
+# Generate TTS and upload to S3 with rate-limiting
+def generate_and_upload_tts(text, s3_client, bucket_name, file_name):
     API_URL = st.secrets["AWS"]["azure_tts_api_url"]
     API_KEY = st.secrets["AWS"]["azure_api_key"]
     headers = {"Content-Type": "application/json", "api-key": API_KEY}
@@ -33,37 +33,18 @@ def generate_and_upload_tts(text, s3_client, bucket_name, file_name, max_retries
         "model": "gpt-4",
         "input": text,
         "voice": "nova",
-        "output_format": "audio-24khz-48kbitrate-mono-mp3"
+        "output_format": "audio-24khz-48kbitrate-mp3"
     }
-    
-    for attempt in range(max_retries):
-        response = requests.post(API_URL, headers=headers, json=payload)
-        
-        if response.status_code == 200:
-            # Upload to S3
-            s3_client.put_object(Bucket=bucket_name, Key=file_name, Body=response.content)
-            return f"https://{bucket_name}.s3.{st.secrets['AWS']['aws_region']}.amazonaws.com/{file_name}"
-        
-        elif response.status_code == 429:
-            error_message = response.json().get("error", {}).get("message", "")
-            # Debug the error message to ensure correct format
-            st.warning(f"Rate limit exceeded. Message: {error_message}")
 
-            # Check if the message contains the expected pattern and safely extract the wait time
-            try:
-                wait_time = int(error_message.split(" ")[-2])  # Assuming the format "Retrying in X seconds"
-                st.warning(f"Retrying in {wait_time} seconds...")
-                time.sleep(wait_time)  # Wait before retrying
-            except ValueError:
-                st.error(f"Could not parse the wait time from the message: {error_message}")
-                break
-        
-        else:
-            st.error(f"Failed with status code {response.status_code}: {response.text}")
-            break
-    
-    st.error("Maximum retries reached. Could not generate TTS.")
-    return None
+    response = requests.post(API_URL, headers=headers, json=payload)
+
+    if response.status_code == 200:
+        # Upload to S3
+        s3_client.put_object(Bucket=bucket_name, Key=file_name, Body=response.content)
+        return f"https://{bucket_name}.s3.{st.secrets['AWS']['aws_region']}.amazonaws.com/{file_name}"
+    else:
+        st.error(f"Failed with status code {response.status_code}: {response.text}")
+        return None
 
 # Process Google Sheet and update with S3 URLs
 def process_google_sheet(spreadsheet_id, source_column_letter, target_column_letter):
@@ -79,6 +60,8 @@ def process_google_sheet(spreadsheet_id, source_column_letter, target_column_let
     sheet = google_sheets_client.open_by_key(spreadsheet_id).sheet1  # Assumes the first sheet
     texts = sheet.col_values(source_column)
     
+    request_count = 0  # Track the number of requests within a minute
+
     with st.spinner("Processing rows..."):
         for row_num, text in enumerate(texts[1:], start=2):  # Skip header row
             if text:
@@ -95,6 +78,12 @@ def process_google_sheet(spreadsheet_id, source_column_letter, target_column_let
                         sheet.update_cell(row_num, target_column, s3_url)
                     except Exception as e:
                         st.error(f"Failed to update row {row_num} in Google Sheet: {e}")
+                
+                # Increment request count and apply rate-limiting
+                request_count += 1
+                if request_count % 3 == 0:  # After every 3 requests
+                    st.info("Rate limit reached. Pausing for 20 seconds...")
+                    time.sleep(20)  # Wait to comply with rate limits
             else:
                 st.warning(f"Skipping empty cell at row {row_num}.")
 

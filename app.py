@@ -32,7 +32,7 @@ def generate_and_upload_tts(text, s3_client, bucket_name, file_name):
     payload = {
         "model": "gpt-4",
         "input": text,
-        "voice": "onyx",
+        "voice": "echo",
         "output_format": "audio-24khz-48kbitrate-mp3"
     }
 

@@ -30,7 +30,7 @@ def generate_and_upload_tts(text, s3_client, bucket_name, file_name):
     API_KEY = st.secrets["AWS"]["azure_api_key"]
     headers = {"Content-Type": "application/json", "api-key": API_KEY}
     payload = {
-        "model": "gpt-4",
+        "model": "tts-1",
         "input": text,
         "voice": "echo",
         "output_format": "audio-24khz-48kbitrate-mp3"

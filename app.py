@@ -63,6 +63,7 @@ def process_google_sheet(spreadsheet_id, source_column_letter, target_column_let
     request_count = 0  # Track the number of requests within a minute
 
     with st.spinner("Processing rows..."):
+        processed_any = False  # Track if any rows were processed
         for row_num, text in enumerate(texts[1:], start=2):  # Skip header row
             if text:
                 text = str(text)  # Ensure text is a string
@@ -76,6 +77,8 @@ def process_google_sheet(spreadsheet_id, source_column_letter, target_column_let
                     try:
                         # Update Google Sheet with the S3 URL
                         sheet.update_cell(row_num, target_column, s3_url)
+                        processed_any = True
+                        st.success(f"Processed row {row_num}: {s3_url}")
                     except Exception as e:
                         st.error(f"Failed to update row {row_num} in Google Sheet: {e}")
                 
@@ -86,6 +89,9 @@ def process_google_sheet(spreadsheet_id, source_column_letter, target_column_let
                     time.sleep(20)  # Wait to comply with rate limits
             else:
                 st.warning(f"Skipping empty cell at row {row_num}.")
+        
+        if not processed_any:
+            st.warning("No valid rows found to process.")
 
 # Streamlit App Interface
 st.title("Google Sheets Text-to-Speech and S3 Upload")
@@ -98,7 +104,7 @@ if st.button("Run Text-to-Speech and Upload"):
     if spreadsheet_id and source_column and target_column:
         try:
             process_google_sheet(spreadsheet_id, source_column, target_column)
-            st.success("Processing completed and S3 URLs updated in the Google Sheet.")
+            st.success("Processing completed.")
         except Exception as e:
             st.error(f"An error occurred: {e}")
     else:
